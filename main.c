@@ -19,8 +19,8 @@ int count_semicolon(char *command)
     return counter;
 }
 
-void parse_command(char* command, char* argv[]){
-    int arg_count = counter_semicolon(command);
+int parse_command(char* command, char** argv){
+    int arg_count = counter_semicolon(command) + 1;
     char *token = strtok(command, ";");
     argv = (char**)malloc(sizeof(char*)*(arg_count));
     int i = 0;
@@ -32,6 +32,7 @@ void parse_command(char* command, char* argv[]){
         i++;
         token = strtok(NULL, ";");
     }
+    return arg_count;
 }
 
 // Free the allocated memory for argv
@@ -43,6 +44,7 @@ void free_parsed_command(char **argv, int arg_count) {
 }
 
 //Worker increment/decrement x which delta is for -1 or +1
+//FIX ME - MUTEX FOR WRITING TO A FILE
 void update_counter_file(char *filename, int delta)
 {
     int fd;
@@ -63,50 +65,6 @@ void update_counter_file(char *filename, int delta)
     write(fd, buffer, strlen(buffer));
     close(fd);
 }
-
-
-
-
-
-//MUTEXES
-pthread_mutex_t fifo_mutex = PTHREAD_COND_INITIALIZER;
-pthread_mutex_t counter_mutex[MAX_NUM_OF_COUNTERS];
-
-//COND VAR
-pthread_cond_t wake_up = PTHREAD_COND_INITIALIZER;
-pthread_cond_t terminate = PTHREAD_COND_INITIALIZER;
-void worker_main(void *args)
-{
-    while (1)
-    {
-        pthread_mutex_lock(&running_mutex);
-        if (!is_running)
-        {
-            pthread_mutex_unlock(&running_mutex);
-            break;
-        }
-        pthread_mutex_unlock(&running_mutex);
-        pthread_mutex_lock(&fifo_mutex);
-        while (is_fifo_empty(&fifo_mutex))
-        {
-            pthread_cond_wait(&wake_up,&fifo_mutex);
-        }
-        char* command = fifo_pop(fifo);
-
-
-
-
-        pthread_cond_signal(&wake_up);
-
-        pthread_mutex_unlock(&fifo_mutex);
-        free_parsed_command(argv); //fix me insert argv
-    }
-
-}
-
-
-
-
 //Dispatcher code
 
 main(int argc, char* argv[])
@@ -143,7 +101,7 @@ main(int argc, char* argv[])
 
     for (int i = 0; i < num_threads; i++)
     {
-        pthread_create(&workers[i], NULL, worker_function, (void *)); //FIXME - add an arguments
+        pthread_create(&workers[i], NULL, worker_function,(void *)fifo); //FIXME - add an arguments
     }
     
 
@@ -196,4 +154,102 @@ main(int argc, char* argv[])
     
     //close all files
     //wait for all threads - pthread_join(thread_id, NULL);
+}
+void msleep (int mseconds)
+{
+    usleep(mseconds*1000);
+}
+void repeat (int start_command, char** job, int count_commands, int times)
+{
+    for (int j=0;j<times;j++)
+    {   
+       for (int i = start_command + 1; i < num_commands; i++){
+            char* command_token = strtok(job[i], " ");
+            if (strcmp(command_token, "increment") == 0){
+                char* x = strtok(NULL, " ");
+                char* file_name = counter_file_name(x);
+                update_counter_file(file_name, 1);
+            } 
+            if (strcmp(command_token, "decrement") == 0){
+                char* x = strtok(NULL, " ");
+                char* file_name = counter_file_name(x);
+                update_counter_file(file_name, -1);
+            } 
+            if (strcmp(command_token, "msleep") == 0)
+            {
+                char* x = strtok(NULL, " ");
+                int x_sleep = (int)strtol(x, NULL, 10);
+                usleep(x_sleep*1000);
+            }             
+        }
+    }
+}
+char* counter_file_name(char* command_x)
+{
+    bool less_then_ten = false;
+    if (strlen(command_x) == 1) less_then_ten = true;
+    char filename[12] = "countxx.txt";
+    if (less_then_ten){
+        filename[5] = '0';
+        filename[6] = command_x[0];
+    }
+    else {
+        filename[5] = command_x[0];
+        filename[6] = command_x[1];
+    }
+    return filename;
+}
+void* worker_main(void *queue)
+{
+    jobs_fifo* fifo = (jobs_fifo*)queue;
+    while (1)
+    {
+        pthread_mutex_lock(&running_mutex);
+        if (!is_running)
+        {
+            pthread_mutex_unlock(&running_mutex);
+            break;
+        }
+        pthread_mutex_unlock(&running_mutex);
+        pthread_mutex_lock(&fifo_mutex);
+        while (is_fifo_empty(&fifo_mutex))
+         {
+            pthread_cond_wait(&wake_up,&fifo_mutex);
+        }
+        char* command = fifo_pop(&fifo);
+        pthread_mutex_unlock(&fifo_mutex);
+        char **job;
+        int count_commands = parse_command(command,job);
+
+        for (int i = 0; i < count_commands; i++){
+            char* command_token = strtok(job[i], " ");
+            if (strcmp(command_token, "increment") == 0){
+                char* x = strtok(NULL, " ");
+                char* file_name = counter_file_name(x);
+                update_counter_file(file_name, 1);
+            } 
+            if (strcmp(command_token, "decrement") == 0){
+                char* x = strtok(NULL, " ");
+                char* file_name = counter_file_name(x);
+                update_counter_file(file_name, -1);
+            } 
+            if (strcmp(command_token, "msleep") == 0)
+            {
+                char* x = strtok(NULL, " ");
+                int x_sleep = (int)strtol(x, NULL, 10);
+                usleep(x_sleep*100 0);
+            }
+            if (strcmp(command_token, "repeat") == 0)
+            {
+                char* x = strtok(NULL, " ");
+                int x_sleep = (int)strtol(x, NULL, 10);
+                repeat(i, job, count_commands, x);
+                break;
+            }           
+        }
+        pthread_cond_signal(&wake_up);
+
+        free_parsed_command(job,count_commands); //fix me insert argv
+    }
+
 }
