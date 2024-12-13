@@ -6,6 +6,7 @@ static int is_running = 1;
 pthread_mutex_t fifo_mutex = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t counter_mutex[MAX_NUM_OF_COUNTERS];
 pthread_mutex_t running_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 //COND VAR
 pthread_cond_t wake_up = PTHREAD_COND_INITIALIZER;
 
@@ -67,52 +68,17 @@ void update_counter_file(char *filename, int delta)
 
 
 
-
-//MUTEXES
-pthread_mutex_t fifo_mutex = PTHREAD_COND_INITIALIZER;
-pthread_mutex_t counter_mutex[MAX_NUM_OF_COUNTERS];
-
-//COND VAR
-pthread_cond_t wake_up = PTHREAD_COND_INITIALIZER;
-pthread_cond_t terminate = PTHREAD_COND_INITIALIZER;
-void worker_main(void *args)
-{
-    while (1)
-    {
-        pthread_mutex_lock(&running_mutex);
-        if (!is_running)
-        {
-            pthread_mutex_unlock(&running_mutex);
-            break;
-        }
-        pthread_mutex_unlock(&running_mutex);
-        pthread_mutex_lock(&fifo_mutex);
-        while (is_fifo_empty(&fifo_mutex))
-        {
-            pthread_cond_wait(&wake_up,&fifo_mutex);
-        }
-        char* command = fifo_pop(fifo);
-
-
-
-
-        pthread_cond_signal(&wake_up);
-
-        pthread_mutex_unlock(&fifo_mutex);
-        free_parsed_command(argv); //fix me insert argv
-    }
-
-}
-
-
-
-
 //Dispatcher code
 
 main(int argc, char* argv[])
 {
+    //Initialize the dispatcher
     jobs_fifo fifo;
     bool full = false;
+    bool empty = empty;
+    worker_data data;
+    
+
     //Analyze the command line arguments
     assert((argc != NUM_OF_CMD_LINE_ARGS));
 
@@ -120,6 +86,7 @@ main(int argc, char* argv[])
     int num_threads = (int) strtol(argv[2],'\0',10);
     FILE* cmd_file_fp = fopen(argv[1],"r");
     assert (cmd_file_fp);
+    int log_enabled = (int) strtol(argv[4],'\0',10);
     
     //Create counters - creates num_counts of counters as txt file, each initialized to 0
     char* counters_names [MAX_NUM_OF_COUNTERS];
@@ -141,27 +108,35 @@ main(int argc, char* argv[])
     //Create threads
     pthread_t workers[MAX_NUM_OF_THREADS];
 
+    //Combine necessarry data to one struct
+    data.counters_fpp = counters_fp;
+    data.fifo = &fifo;
+
     for (int i = 0; i < num_threads; i++)
     {
-        pthread_create(&workers[i], NULL, worker_function, (void *)); //FIXME - add an arguments
+        pthread_create(&workers[i], NULL, worker_main,(void *)&data);
     }
     
-
+    ////////////////////////////////////////////////////
+    //////////////////Run Dispatcher////////////////////
+    ////////////////////////////////////////////////////
 
     //Read the jobs from the cmdfile
     char job[MAX_LINE_WIDTH];
-
     while (fgets(job,MAX_LINE_WIDTH,cmd_file_fp)){
-    //Parsing
-    char* token = strtok(job," ");
-    assert (token);
 
+    //Separate between worker and dispathcer job
+    char* token = strtok(job," ");
+    assert (token); //Dispatcher or Worker
+
+    //Dispatcher code
     if (strcmp(token,"dispatcher"))
     {
-        
+        //dispatcher sleep + dispatcher wait implementation
+
     }//End of dispatcher code
 
-    // woker job initialization
+    //Woker code
     if (strcmp(token,"worker"))
     {
 
@@ -184,16 +159,64 @@ main(int argc, char* argv[])
         fifo_push(&fifo,job+strlen(token)+1); // job pointer incremented by len of worker + space
         pthread_cond_signal(&wake_up); // wake up any thread
         pthread_mutex_unlock(&fifo_mutex); // FIFO MUTEX UNLOCK
-    } //End of worker code
 
+    } //End of worker code
     }    
 
-    //Dispatcher commands
+
+    ////////////////////////////////////////////////////
+    //////////////////Exit Dispatcher///////////////////
+    ////////////////////////////////////////////////////
+    
+    //Verify that fifo is empty
+    while (!empty)
+    {
+        pthread_mutex_lock(&fifo_mutex); // FIFO MUTEX LOCK
+
+        if (is_fifo_empty(&fifo)) {
+                empty = true;
+                pthread_mutex_unlock(&fifo_mutex); // FIFO MUTEX UNLOCK
+                break;
+            }
+        pthread_cond_signal(&wake_up); // wake up any thread
+        pthread_mutex_unlock(&fifo_mutex); // FIFO MUTEX UNLOCK
+    }
+    
+    //Wait for all workers to finish
+    for (int i = 0; i < num_threads; i++)
+        {
+            ptherad_join(workers[i]);
+        }
 
     //Statistics
 
-    //Exit Dispatcher:
+    //Logs
+
+    }
     
-    //close all files
-    //wait for all threads - pthread_join(thread_id, NULL);
+void worker_main(void *args)
+{
+    while (1)
+    {
+        pthread_mutex_lock(&running_mutex);
+        if (!is_running)
+        {
+            pthread_mutex_unlock(&running_mutex);
+            break;
+        }
+        pthread_mutex_unlock(&running_mutex);
+        pthread_mutex_lock(&fifo_mutex);
+        while (is_fifo_empty(&fifo_mutex))
+        {
+            pthread_cond_wait(&wake_up,&fifo_mutex);
+        }
+        char* command = fifo_pop(&fifo);
+
+        pthread_cond_signal(&wake_up);
+
+        pthread_mutex_unlock(&fifo_mutex);
+        free_parsed_command(&argv); //fix me insert argv
+    }
+
 }
+
