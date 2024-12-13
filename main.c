@@ -196,8 +196,55 @@ main(int argc, char* argv[])
 
     }
     
-void worker_main(void *args)
+
+void msleep (int mseconds)
 {
+    usleep(mseconds*1000);
+}
+void repeat (int start_command, char** job, int count_commands, int times)
+{
+    for (int j=0;j<times;j++)
+    {   
+       for (int i = start_command + 1; i < count_commands; i++){
+            char* command_token = strtok(job[i], " ");
+            if (strcmp(command_token, "increment") == 0){
+                char* x = strtok(NULL, " ");
+                char* file_name = counter_file_name(x);
+                update_counter_file(file_name, 1);
+            } 
+            if (strcmp(command_token, "decrement") == 0){
+                char* x = strtok(NULL, " ");
+                char* file_name = counter_file_name(x);
+                update_counter_file(file_name, -1);
+            } 
+            if (strcmp(command_token, "msleep") == 0)
+            {
+                char* x = strtok(NULL, " ");
+                int x_sleep = (int)strtol(x, NULL, 10);
+                usleep(x_sleep*1000);
+            }             
+        }
+    }
+}
+
+char* counter_file_name(char* command_x)
+{
+    bool less_then_ten = false;
+    if (strlen(command_x) == 1) less_then_ten = true;
+    char filename[12] = "countxx.txt";
+    if (less_then_ten){
+        filename[5] = '0';
+        filename[6] = command_x[0];
+    }
+    else {
+        filename[5] = command_x[0];
+        filename[6] = command_x[1];
+    }
+    return filename;
+}
+void* worker_main(void *queue)
+{
+    jobs_fifo* fifo = (jobs_fifo*)queue;
     while (1)
     {
         pthread_mutex_lock(&running_mutex);
@@ -213,12 +260,39 @@ void worker_main(void *args)
             pthread_cond_wait(&wake_up,&fifo_mutex);
         }
         char* command = fifo_pop(&fifo);
-
-        pthread_cond_signal(&wake_up);
-
         pthread_mutex_unlock(&fifo_mutex);
-        free_parsed_command(&argv); //fix me insert argv
+        char **job;
+        int count_commands = parse_command(command,job);
+
+        for (int i = 0; i < count_commands; i++){
+            char* command_token = strtok(job[i], " ");
+            if (strcmp(command_token, "increment") == 0){
+                char* x = strtok(NULL, " ");
+                char* file_name = counter_file_name(x);
+                update_counter_file(file_name, 1);
+            } 
+            if (strcmp(command_token, "decrement") == 0){
+                char* x = strtok(NULL, " ");
+                char* file_name = counter_file_name(x);
+                update_counter_file(file_name, -1);
+            } 
+            if (strcmp(command_token, "msleep") == 0)
+            {
+                char* x = strtok(NULL, " ");
+                int x_sleep = (int)strtol(x, NULL, 10);
+                usleep(x_sleep*1000);
+            }
+            if (strcmp(command_token, "repeat") == 0)
+            {
+                char* x = strtok(NULL, " ");
+                int x_sleep = (int)strtol(x, NULL, 10);
+                repeat(i, job, count_commands, x);
+                break;
+            }           
+        }
+       
+
+        free_parsed_command(job,count_commands); //fix me insert argv
     }
 
 }
-
