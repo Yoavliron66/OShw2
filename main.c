@@ -1,8 +1,13 @@
 #include "hw2.h"
+#include "jobs_fifo.c"
+
 //MUTEXES
-pthread_mutex_t counters_mutex[MAX_NUM_OF_COUNTERS];
-
-
+static int is_running = 1;
+pthread_mutex_t fifo_mutex = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t counter_mutex[MAX_NUM_OF_COUNTERS];
+pthread_mutex_t running_mutex = PTHREAD_MUTEX_INITIALIZER;
+//COND VAR
+pthread_cond_t wake_up = PTHREAD_COND_INITIALIZER;
 
 int count_semicolon(char *command)
 {
@@ -61,19 +66,36 @@ void update_counter_file(char *filename, int delta)
 
 void worker_main(void *args)
 {
+    while (1)
+    {
+        pthread_mutex_lock(&running_mutex);
+        if (!is_running)
+        {
+            pthread_mutex_unlock(&running_mutex);
+            break;
+        }
+        pthread_mutex_unlock(&running_mutex);
+        pthread_mutex_lock(&fifo_mutex);
+        while (is_fifo_empty(&fifo_mutex))
+        {
+            pthread_cond_wait(&wake_up,&fifo_mutex);
+        }
+        char* command = fifo_pop(fifo);
+
+
+
+
+        pthread_cond_signal(&wake_up);
+
+        pthread_mutex_unlock(&fifo_mutex);
+        free_parsed_command(argv); //fix me insert argv
+    }
 
 }
 
 
 
 
-
-//MUTEXES
-pthread_mutex_t fifo_mutex = PTHREAD_COND_INITIALIZER;
-pthread_mutex_t counter_mutex[MAX_NUM_OF_COUNTERS];
-
-//COND VAR
-pthread_cond_t wake_up = PTHREAD_COND_INITIALIZER;
 //Dispatcher code
 
 main(int argc, char* argv[])
@@ -99,6 +121,7 @@ main(int argc, char* argv[])
         counters_fp[i] = fopen(counters_names[i],"w");
         assert (counters_fp[i]);
         fprintf(counters_fp[i],"%lld",0); //FIXME - check it
+        pthread_mutex_init(&counter_mutex[i],NULL);
         close(counters_fp[i]);
     }
 
