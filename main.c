@@ -69,7 +69,11 @@ void worker_main(void *args)
 
 
 //MUTEXES
+pthread_mutex_t fifo_mutex = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t counter_mutex[MAX_NUM_OF_COUNTERS];
 
+//COND VAR
+pthread_cond_t wake_up = PTHREAD_COND_INITIALIZER;
 //Dispatcher code
 
 main(int argc, char* argv[])
@@ -94,31 +98,43 @@ main(int argc, char* argv[])
     {
         counters_fp[i] = fopen(counters_names[i],"w");
         assert (counters_fp[i]);
-        fprintf(counters_fp[i],"%d",0); //FIXME - check it
+        fprintf(counters_fp[i],"%lld",0); //FIXME - check it
+        close(counters_fp[i]);
     }
 
     //Create threads
+    pthread_t workers[MAX_NUM_OF_THREADS];
 
     for (int i = 0; i < num_threads; i++)
     {
-        //pthread_create(&thread_id, NULL, thread_function, (void *)arg);
+        pthread_create(&workers[i], NULL, worker_function, (void *)); //FIXME - add an arguments
     }
     
 
 
     //Read the jobs from the cmdfile
+    char job[MAX_LINE_WIDTH];
 
+    while (fgets(job,MAX_LINE_WIDTH,cmd_file_fp)){
+    //Parsing
+    char* token = strtok(job," ");
+    assert (token);
+
+    if (strcmp(token,"dispatcher"))
+    {
+        
+    }
+
+    if (strcmp(token,"worker"))
+    {
+        /* worker code - wake up*/
+    }
+
+    }    
 
     //Dispatcher commands
 
-
-
-    //FIFO
-
-
-
-    //Threads
-
+    //Statistics
 
     //Exit Dispatcher:
     //close all files
