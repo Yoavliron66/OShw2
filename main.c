@@ -1,4 +1,8 @@
 #include "hw2.h"
+//MUTEXES
+pthread_mutex_t counters_mutex[MAX_NUM_OF_COUNTERS];
+
+
 
 int count_semicolon(char *command)
 {
@@ -53,6 +57,11 @@ void update_counter_file(char *filename, int delta)
     snprinf(buffer,sizeof(buffer),"%lld\n",val);
     write(fd, buffer, strlen(buffer));
     close(fd);
+}
+
+void worker_main(void *args)
+{
+
 }
 
 
