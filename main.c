@@ -66,10 +66,13 @@ pthread_mutex_t counter_mutex[MAX_NUM_OF_COUNTERS];
 
 //COND VAR
 pthread_cond_t wake_up = PTHREAD_COND_INITIALIZER;
+pthread_cond_t terminate = PTHREAD_COND_INITIALIZER;
 //Dispatcher code
 
 main(int argc, char* argv[])
 {
+    jobs_fifo fifo;
+    bool full = false;
     //Analyze the command line arguments
     assert((argc != NUM_OF_CMD_LINE_ARGS));
 
@@ -115,12 +118,32 @@ main(int argc, char* argv[])
     if (strcmp(token,"dispatcher"))
     {
         
-    }
+    }//End of dispatcher code
 
+    // woker job initialization
     if (strcmp(token,"worker"))
     {
-        /* worker code - wake up*/
-    }
+
+        while (full)
+        {
+            pthread_mutex_lock(&fifo_mutex); // FIFO MUTEX LOCK
+
+            if (!is_fifo_full(&fifo)) {
+                full = false;
+                pthread_mutex_unlock(&fifo_mutex); // FIFO MUTEX UN
+                break;
+            }
+
+            pthread_cond_signal(&wake_up); // wake up any thread
+            pthread_mutex_unlock(&fifo_mutex); // FIFO MUTEX UNLOCK
+        }
+        
+        //push job to the FIFO
+        pthread_mutex_lock(&fifo_mutex); // FIFO MUTEX LOCK
+        fifo_push(&fifo,job+strlen(token)+1); // job pointer incremented by len of worker + space
+        pthread_cond_signal(&wake_up); // wake up any thread
+        pthread_mutex_unlock(&fifo_mutex); // FIFO MUTEX UNLOCK
+    } //End of worker code
 
     }    
 
@@ -129,6 +152,7 @@ main(int argc, char* argv[])
     //Statistics
 
     //Exit Dispatcher:
+    
     //close all files
     //wait for all threads - pthread_join(thread_id, NULL);
 }
