@@ -45,9 +45,10 @@ void free_parsed_command(char **argv, int arg_count) {
 }
 
 //Worker increment/decrement x which delta is for -1 or +1
-//FIX ME - MUTEX FOR WRITING TO A FILE
-void update_counter_file(char *filename, int delta)
+//FIX ME - MUTEX FOR WRITING TO A FILE->fixed
+void update_counter_file(char *filename, int delta, int counter_number)
 {
+    pthread_mutex_lock(&counter_mutex[counter_number]);
     int fd;
     long long val = 0;
     char buffer[64];
@@ -65,6 +66,7 @@ void update_counter_file(char *filename, int delta)
     snprinf(buffer,sizeof(buffer),"%lld\n",val);
     write(fd, buffer, strlen(buffer));
     close(fd);
+    pthread_mutex_unlock(&counter_mutex[counter_number]);
 }
 
 
@@ -210,12 +212,12 @@ void repeat (int start_command, char** job, int count_commands, int times)
             if (strcmp(command_token, "increment") == 0){
                 char* x = strtok(NULL, " ");
                 char* file_name = counter_file_name(x);
-                update_counter_file(file_name, 1);
+                update_counter_file(file_name, 1,x);
             } 
             if (strcmp(command_token, "decrement") == 0){
                 char* x = strtok(NULL, " ");
                 char* file_name = counter_file_name(x);
-                update_counter_file(file_name, -1);
+                update_counter_file(file_name, -1,x);
             } 
             if (strcmp(command_token, "msleep") == 0)
             {
@@ -242,9 +244,14 @@ char* counter_file_name(char* command_x)
     }
     return filename;
 }
-void* worker_main(void *queue)
+
+
+void* worker_main(void *data)
 {
-    jobs_fifo* fifo = (jobs_fifo*)queue;
+    worker_data* wdata = (worker_data*)data;
+    FILE** counters = wdata->counters_fpp;
+    jobs_fifo* fifo = wdata->fifo;
+
     while (1)
     {
         pthread_mutex_lock(&running_mutex);
@@ -269,12 +276,12 @@ void* worker_main(void *queue)
             if (strcmp(command_token, "increment") == 0){
                 char* x = strtok(NULL, " ");
                 char* file_name = counter_file_name(x);
-                update_counter_file(file_name, 1);
+                update_counter_file(file_name, 1,x);
             } 
             if (strcmp(command_token, "decrement") == 0){
                 char* x = strtok(NULL, " ");
                 char* file_name = counter_file_name(x);
-                update_counter_file(file_name, -1);
+                update_counter_file(file_name, -1,x);
             } 
             if (strcmp(command_token, "msleep") == 0)
             {
@@ -290,9 +297,7 @@ void* worker_main(void *queue)
                 break;
             }           
         }
-       
-
-        free_parsed_command(job,count_commands); //fix me insert argv
+        free_parsed_command(job,count_commands); 
     }
 
 }
