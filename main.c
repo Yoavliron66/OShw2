@@ -134,7 +134,16 @@ main(int argc, char* argv[])
     //Dispatcher code
     if (strcmp(token,"dispatcher"))
     {
-        //dispatcher sleep + dispatcher wait implementation
+        token = strtok(NULL,";");
+        if (strcmp(token,"wait"))
+        {   
+            //Wait for all workers to finish
+            for (int i = 0; i < num_threads; i++)
+            {
+            ptherad_join(workers[i]);
+            }
+        }
+        
 
     }//End of dispatcher code
 
